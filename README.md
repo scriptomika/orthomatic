@@ -12,7 +12,7 @@ satisfying the criterion of mutual-best-match are then pooled  and aligned by MA
 -----
 
 ## Requirements & Install
-The orthomatic script can be run directly on Unix machines, with the following dependencies in the user's $PATH.
+Once the local scripts are executable (chmod commands below), the orthomatic script can be run directly on Unix machines, with the following dependencies in the user's $PATH.
 
 ### Dependencies (must be in $PATH )
 
