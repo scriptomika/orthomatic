@@ -26,7 +26,7 @@ The orthomatic script can be run directly on Unix machines, with the following d
 [Source for selectSeqs.pl](http://raven.wrrb.uaf.edu/~ntakebay/teaching/programming/perl-scripts/perl-scripts.html)
 [Source fro seqConverter.pl](https://uol.de/systematik-evolutionsbiologie/programme)																
 ### Accessory scripts (included): 		
-These four script must be in the working directory   
+These two scripts must be in the working directory   
 								
 - pullOGsfromBlast.py											
 - parse_recipBLAST.py		
