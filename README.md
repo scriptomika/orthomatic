@@ -1,4 +1,4 @@
-# ORTHomatic 
+# Orthomatic 
 
 *Ortholog recovery using curated ortholog datasets and reciprocal best-match criterion.*
 
@@ -20,9 +20,11 @@ The orthomatic script can be run directly on Unix machines, with the following d
  - GNU parallel																								
  - CD-HIT (cdhit), if -c invoked	
  - MAFFT (mafft)	
- - selectSeqs.pl 	(provided here)
- - seqConverter.pl (for nexus input option, provided here)																						
-																
+ - selectSeqs.pl 	(provided here, written by Naoki Takebayashi)
+ - seqConverter.pl (for nexus input option, provided here, by Olaf Bininda-Emonds)
+
+[Source for selectSeqs.pl](http://raven.wrrb.uaf.edu/~ntakebay/teaching/programming/perl-scripts/perl-scripts.html)
+[Source fro seqConverter.pl](https://uol.de/systematik-evolutionsbiologie/programme)																
 ### Accessory scripts (included): 		
 These four script must be in the working directory   
 								
