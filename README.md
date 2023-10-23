@@ -31,6 +31,12 @@ These two scripts must be in the working directory
 - pullOGsfromBlast.py											
 - parse_recipBLAST.py		
 
+### Prepare scripts 
+
+> chmod +x orthomatic.sh
+> chmod +x parse_recipBLAST.py
+> chmod +x pullOGsfromBlast.py
+
 ----
 
 ## Inputs
