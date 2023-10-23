@@ -34,9 +34,9 @@ These two scripts must be in the working directory
 ### Prepare scripts 
 
 > chmod +x orthomatic.sh
-
+>
 > chmod +x parse_recipBLAST.py
-
+>
 > chmod +x pullOGsfromBlast.py
 
 ----
