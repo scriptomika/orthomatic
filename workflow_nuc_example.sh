@@ -38,7 +38,7 @@ sed 's/ .*$//' ref_genome/${refsp_cds} > ref_genome/${refsp_cds%.fasta}.fa
 blastx -query ref_genome/${refsp_cds%.fasta}.fa  -subject $protdata -evalue 1e-50 -outfmt 6 -num_threads 24 -out blast1
 tblastn -query $protdata -subject ref_genome/${refsp_cds%.fasta}.fa -evalue 1e-50 -outfmt 6 -num_threads 24 -out blast2
 
-./parse_recip_blast.py blast1 blast2 1 2 12 high rbh
+./parse_recipBLAST.py blast1 blast2 1 2 12 high rbh
 tail -n+2 rbh |cut -f1 |sort|uniq >rbh2
 
 selectSeqs.pl -f rbh2 ref_genome/${refsp_cds%.fasta}.fa> refsp_hits.fas
