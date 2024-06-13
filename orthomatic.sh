@@ -103,7 +103,7 @@ while getopts hT:i:r:t:g:e:m:cD opt; do
         r)  REFSP=$OPTARG; if [ ! $OPTARG ]; then echo $rerr; show_help; exit; fi;;
         t)  TAXDB=$OPTARG; if [ ! -d $OPTARG ]; then echo $terr; show_help; exit; fi;;
         g)  REFDB=$OPTARG; if [ ! -d $OPTARG ]; then echo $gerr; show_help; exit; fi;;
-        e) 	EVAL=$OPTARG;  if [ ! $OPTARG ]; then echo $eerr; show_help; exit; fi;;
+        e)  EVAL=$OPTARG;  if [ ! $OPTARG ]; then echo $eerr; show_help; exit; fi;;
         m)  MORET=$OPTARG ;;
         c)  CDHIT=$OPTARG; echo "Input taxa fastas will be consolidated with CD-HIT" ;;
         D)  DEL=$OPTARG; echo "Clean-up selected: Temporary files will be deleted"; DELY="yes" ;;
@@ -170,6 +170,8 @@ else
 	awk -v new=">${REFSP}\|" '{sub(/>/, new)}1' ${REFSP}_OGs_renamed.fa > tmp 2>/dev/null
 	mv tmp ./Seed_OGs/${REFSP}_OGs_renamed.fa
 	rm ${REFSP}_OGs_renamed.fa
+        perl -pi -e 's/-//g' ./Seed_OGs/${REFSP}_OGs_renamed.fa #remove any gaps if using OGs from alignments
+
 fi
 
 #BLAST REFSP OGs against whole REFSP genome to get consistent gene names
@@ -185,11 +187,12 @@ else
 		  makeblastdb -in $fasta -parse_seqids -dbtype prot  #TO checkif exists first
 	  fi
 	  echo "BLASTING  ./Seed_OGs/${REFSP}_OGs_renamed.fa against own genome:  $fasta ..."
-	  blastp -query ./Seed_OGs/${REFSP}_OGs_renamed.fa -db $fasta -out ${fasta%.}_ref_blastout -evalue $EVAL -outfmt 6 -max_target_seqs 1
+	  blastp -query ./Seed_OGs/${REFSP}_OGs_renamed.fa -db $fasta -out ${fasta%.}_ref_blastout -evalue $EVAL -outfmt 6 -max_target_seqs 10
 
-	  #Remove redundant accessions
-	  cat ${fasta%.}_ref_blastout| cut -f1 |uniq|  while read line ; do grep -m 1 $line ${fasta%.}_ref_blastout >> ${fasta%.}_ref_blastout_2; done 
-
+	  #Remove redundant accessions and retain top match
+	  cat ${fasta%.}_ref_blastout |sort -k1,1 -k12,12nr > sorted
+	cat sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line sorted >> ${fasta%.}_ref_blastout_2; done 
+	rm sorted
  	  #Pull fasta seqs for each hit
       cut -f2 ${fasta%.}_ref_blastout_2 > file
  	  selectSeqs.pl -f file $fasta > ref_pep_genome_seq.fa
@@ -227,7 +230,7 @@ else
 fi
 
 #BLAST $REFSP OGs against each formated peptide dataset
-if [ $MORET ]; then blastp -db NEWTX -query ./hit1_fasta/"${REFSP}".fa -out ${NEWTX}_blastout1 -evalue $EVAL -outfmt 6 -max_target_seqs 1
+if [ $MORET ]; then blastp -db NEWTX -query ./hit1_fasta/"${REFSP}".fa -out ${NEWTX}_blastout1 -evalue $EVAL -outfmt 6 -max_target_seqs 10
 	mv ./${TAXDB}/*_blastout1 ./blast1_results; 
 fi
 
@@ -235,14 +238,17 @@ if [ "$(ls -A ./blast1_results)" ];
 then echo "BLAST1 complete"
 else
 	echo "BLAST1: Querying $REFSP against new taxa..."
-	parallel --jobs $maxCPU 'blastp -db {} -query' ./hit1_fasta/"${REFSP}".fa '-out {.}_blastout1 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 1' ::: ./${TAXDB}/*.fa
+	parallel --jobs $maxCPU 'blastp -db {} -query' ./hit1_fasta/"${REFSP}".fa '-out {.}_blastout1 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 10' ::: ./${TAXDB}/*.fa
 	mv ./${TAXDB}/*_blastout1 ./blast1_results
 fi
 
 
 #Pull fasta seqs for each hit to use in 2nd round of blasts
 function pullseqs () {
-	cat $1| cut -f1 |uniq|  while read line ; do grep -m 1 $line $hitfile >> ${1}_2; done 
+#	cat $1| cut -f1 |uniq|  while read line ; do grep -m 1 $line $1 >> ${1}_2; done 
+   	cat $1 |sort -k1,1 -k12,12nr > sorted
+	cat sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line sorted >> ${1}_2; done 
+	rm sorted
 	cut -f2 ${1}_2 |perl -p -e 's/\>//g' > temp
 	local filenamefull=${1##*/}
 	local filename="${filenamefull%_blastout1}.fa"
@@ -268,15 +274,18 @@ echo "Blast1 hits pulled"
 #BLAST REFSP OGs against best hits from each formated peptide dataset's 
 echo "Running reciprocal BLASTs..."; echo ""
 refgen=$(echo ./"${REFDB}"/${REFSP}*.fa)
-if [ $MORET ]; then blastp -query ./hit1_fasta/${NEWTX}.fa -evalue $EVAL -db $refgen -out {1.}_blastout2 -outfmt 6 -max_target_seqs 1; 
+if [ $MORET ]; then blastp -query ./hit1_fasta/${NEWTX}.fa -evalue $EVAL -db $refgen -out {1.}_blastout2 -outfmt 6 -max_target_seqs 10; 
 else 
-parallel --jobs $maxCPU 'blastp -query {1} -db {2} -out {1.}_blastout2 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 1' ::: ./hit1_fasta/*.fa ::: $refgen
+parallel --jobs $maxCPU 'blastp -query {1} -db {2} -out {1.}_blastout2 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 10' ::: ./hit1_fasta/*.fa ::: $refgen
 fi
 mv ./hit1_fasta/*_blastout2 ./blast2_results
 
 function parsepull {
 	#Remove redundant accessions
-   cat $1| cut -f1 |uniq|  while read line ; do grep -m 1 $line $1 >> ${1}_2; done
+   #cat $1| cut -f1 |uniq|  while read line ; do grep -m 1 $line $1 >> ${1}_2; done
+     cat $1 |sort -k1,1 -k12,12nr > sorted
+	cat sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line sorted >> ${1}_2; done 
+	rm sorted
    local basepath=${1%_blastout2}
    local base=${basepath##*/}
    # determine which seqfile to grab from using taxon in filename
