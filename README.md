@@ -83,37 +83,28 @@ $ head -1 *.fa
 ## Usage
 
 Example: 
-
-> orthomatic.sh -T 8 -i ortholog_dir -s prot -r Amphimedon -g Aque_genome -t newdata_fastas -e 1e-20 
-
+```
+ orthomatic.sh -T 8 -i ortholog_dir -s prot -r Amphimedon -g Aque_genome -t newdata_fastas -e 1e-20 
+```
 
 ### Parameters
-
->	-h 		help
->	
->	-D 		option to delete temporary files 
->	
->	-c  	option to run CDHIT on FASTAs specified by -t or -m
->	
->	-T  	number of threads
->	
->	-s      sequence format (prot or nucl)
->	
->	-i  	directory with either: 
->			one fasta per gene; each fasta has a sequence from Reference Species
->			-OR-
->			single nexus file with concatenated data; gene partitions specified in charset block
->				
->	-r 		Reference Species handle; no spaces, name must match fasta headerline in OGDIR/ files
->	
->	-t 		directory with peptide fasta files for each taxon to search, including any reference species
->				
->	-m     add new taxon dataset to existing results (put FASTA in TAXDB directory)
->               **Requires directory of previous alignments called OGfastasALN**
->                 
->	-g 		directory with peptide fasta genome for reference species. File must start with REFSP handle. 
->	-e 		e-value cut-off for blast
-
+```
+	-h 		help	
+	-D 		option to delete temporary files 	
+	-c  	option to run CDHIT on FASTAs specified by -t or -m	
+	-T  	number of threads	
+	-s      sequence format (prot or nucl)	
+	-i  	directory with either: 
+			one fasta per gene; each fasta has a sequence from Reference Species
+			-OR-
+			single nexus file with concatenated data; gene partitions specified in charset block				
+	-r 		Reference Species handle; no spaces, name must match fasta headerline in OGDIR/ files	
+	-t 		directory with peptide fasta files for each taxon to search, including any reference species
+	-m     add new taxon dataset to existing results (put FASTA in TAXDB directory)
+              **Requires directory of previous alignments called OGfastasALN**               
+	-g 		directory with peptide fasta genome for reference species. File must start with REFSP handle. 
+	-e 		e-value cut-off for blast
+```
 ---
 
 ## Output
