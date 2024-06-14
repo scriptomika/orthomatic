@@ -1,5 +1,5 @@
 #!/bin/bash
-
+set -e
 
 # TO DO: 
 #   file containing ref species names instead of arg1; 
@@ -59,8 +59,7 @@ See fasta example: http://datadryad.org/bitstream/handle/10255/dryad.98320/OGs.z
 #   NCBI BLAST 2.2.31+ (specifically: blastp, makeblastdb)		
 #   GNU parallel																								
 #   CD-HIT (cdhit), if -c invoked																									
-#   MAFFT (mafft)
-#																	
+# 																	
 # Dependencies (included): 		
 #   
 #   selectSeqs.pl 								
@@ -171,7 +170,6 @@ else
 	mv tmp ./Seed_OGs/${REFSP}_OGs_renamed.fa
 	rm ${REFSP}_OGs_renamed.fa
         perl -pi -e 's/-//g' ./Seed_OGs/${REFSP}_OGs_renamed.fa #remove any gaps if using OGs from alignments
-
 fi
 
 #BLAST REFSP OGs against whole REFSP genome to get consistent gene names
@@ -189,12 +187,14 @@ else
 	  echo "BLASTING  ./Seed_OGs/${REFSP}_OGs_renamed.fa against own genome:  $fasta ..."
 	  blastp -query ./Seed_OGs/${REFSP}_OGs_renamed.fa -db $fasta -out ${fasta%.}_ref_blastout -evalue $EVAL -outfmt 6 -max_target_seqs 10
 
-	  #Remove redundant accessions and retain top match
+	#Remove redundant accessions and retain top match
 	  cat ${fasta%.}_ref_blastout |sort -k1,1 -k12,12nr > sorted
 	cat sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line sorted >> ${fasta%.}_ref_blastout_2; done 
 	rm sorted
+
+
  	  #Pull fasta seqs for each hit
-      cut -f2 ${fasta%.}_ref_blastout_2 > file
+         cut -f2 ${fasta%.}_ref_blastout_2 > file
  	  selectSeqs.pl -f file $fasta > ref_pep_genome_seq.fa
  	  rm file 
 	  mv ./${REFDB}/*ref_blastout* ./ref_OGs
@@ -215,6 +215,7 @@ else
 	else
 	rename 's/\.fa/\.fas/' ./${TAXDB}/*.fa # change orig ext. to fas so it's ignored by later calls
 	parallel --jobs $maxCPU 'cdhit -i {} -o {.}_cdht98.fa -c 0.98 -n 5' ::: ./${TAXDB}/*.fas	
+	wait
 	fi
 fi
 if [ ! $CDHIT ] && [ $MORET ]; then NEWTX=./${TAXDB}/${MORET}; fi
@@ -227,6 +228,7 @@ then echo "BLAST databases for new taxa found"
 else
 	echo "Formatting BLAST databases for new taxa..."
 	parallel --jobs $maxCPU 'makeblastdb -in {} -parse_seqids -dbtype prot' ::: ./${TAXDB}/*.fa
+	wait
 fi
 
 #BLAST $REFSP OGs against each formated peptide dataset
@@ -239,30 +241,35 @@ then echo "BLAST1 complete"
 else
 	echo "BLAST1: Querying $REFSP against new taxa..."
 	parallel --jobs $maxCPU 'blastp -db {} -query' ./hit1_fasta/"${REFSP}".fa '-out {.}_blastout1 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 10' ::: ./${TAXDB}/*.fa
+	wait
 	mv ./${TAXDB}/*_blastout1 ./blast1_results
 fi
 
 
 #Pull fasta seqs for each hit to use in 2nd round of blasts
 function pullseqs () {
-#	cat $1| cut -f1 |uniq|  while read line ; do grep -m 1 $line $1 >> ${1}_2; done 
-   	cat $1 |sort -k1,1 -k12,12nr > sorted
-	cat sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line sorted >> ${1}_2; done 
-	rm sorted
-	cut -f2 ${1}_2 |perl -p -e 's/\>//g' > temp
+#	cat $1| cut -f1 |uniq|  while read line ; do grep -m 1 $line $hitfile >> ${1}_2; done 
+        cat $1 |sort -k1,1 -k12,12nr > ${1}.sorted
+	cat ${1}.sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line ${1}.sorted >> ${1}_2; done 
+	rm ${1}.sorted
+	cut -f2 ${1}_2 |perl -p -e 's/\>//g' > ${1}.temp
 	local filenamefull=${1##*/}
 	local filename="${filenamefull%_blastout1}.fa"
+#echo $filename
+#echo ${2}/${filename}
 	echo "Pulling FASTA seqs from  $filename ..."
-	selectSeqs.pl -f temp ./${TAXDB}/$filename >> ./hit1_fasta/${filename}
-	rm temp
+	selectSeqs.pl -f ${1}.temp ./${2}/${filename} >> ./hit1_fasta/${filename}
+	rm ${1}.temp
 	}
-
-if [ $MORET ]; then pullseqs ./blast1_results/${NEWTX}_blastout1; 
+export -f pullseqs
+if [ $MORET ]; then pullseqs ./blast1_results/${NEWTX}_blastout1 $TAXDB; 
 	else
-	for hitfile in ./blast1_results/*blastout1
-	do
-	pullseqs $hitfile
-	done
+	#for hitfile in ./blast1_results/*blastout1
+#	do
+	#pullseqs $hitfile
+#	done
+	parallel --jobs $maxCPU pullseqs  ::: ./blast1_results/*blastout1 ::: $TAXDB
+wait
 fi
 echo "Blast1 hits pulled"
 
@@ -277,34 +284,40 @@ refgen=$(echo ./"${REFDB}"/${REFSP}*.fa)
 if [ $MORET ]; then blastp -query ./hit1_fasta/${NEWTX}.fa -evalue $EVAL -db $refgen -out {1.}_blastout2 -outfmt 6 -max_target_seqs 10; 
 else 
 parallel --jobs $maxCPU 'blastp -query {1} -db {2} -out {1.}_blastout2 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 10' ::: ./hit1_fasta/*.fa ::: $refgen
+wait
 fi
 mv ./hit1_fasta/*_blastout2 ./blast2_results
 
 function parsepull {
 	#Remove redundant accessions
    #cat $1| cut -f1 |uniq|  while read line ; do grep -m 1 $line $1 >> ${1}_2; done
-     cat $1 |sort -k1,1 -k12,12nr > sorted
-	cat sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line sorted >> ${1}_2; done 
-	rm sorted
-   local basepath=${1%_blastout2}
+   cat $1 |sort -k1,1 -k12,12nr > ${1}.sorted
+	cat ${1}.sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line ${1}.sorted >> ${1}_2; done 
+	rm ${1}.sorted   
+
+local basepath=${1%_blastout2}
    local base=${basepath##*/}
    # determine which seqfile to grab from using taxon in filename
-   if [ -s ./${TAXDB}/${base}.fa ]; then seqfile=./${TAXDB}/${base}.fa
-     ./parse_recipBLAST.py ${1}_2 ./blast1_results/${base}_blastout1_2 1 2 12 high rbh
-     tail -n+2 rbh > rbh2
-     ./pullOGsfromBlast.py $seqfile rbh2 2 1; rm rbh*
-   elif [ -s ./${REFDB}/${base}.fa ]; then seqfile=./${REFDB}/${base}.fa
-     ./pullOGsfromBlast.py $seqfile ./ref_OGs/${base}.fa_ref_blastout_2 2 2
+   # ref_OG becomes file prefix
+   # blast hit sequences are pulled and appended to the same ref_OG fasta
+   if [ -s ./${2}/${base}.fa ]; then seqfile=./${2}/${base}.fa
+     parse_recipBLAST.py ${1}_2 ./blast1_results/${base}_blastout1_2 1 2 12 high ${1}.rbh
+     tail -n+2 ${1}.rbh > ${1}.rbh2
+     pullOGsfromBlast.py $seqfile ${1}.rbh2 2 1; rm ${1}.rbh*
+   elif [ -s ./${3}/${base}.fa ]; then seqfile=./${3}/${base}.fa
+     pullOGsfromBlast.py $seqfile ./ref_OGs/${base}.fa_ref_blastout_2 2 2
    fi
   echo "Pulling Best Reciprocal Blast Hits from " $seqfile
 }
+export -f parsepull
 
-if [ $MORET ]; then parsepull ./blast2_results/${NEWTX%.fa}_blastout2
+if [ $MORET ]; then parsepull ./blast2_results/${NEWTX%.fa}_blastout2 $TAXDB $REFDB
 else
-for blastout in ./blast2_results/*blastout2
-do
-  parsepull $blastout
-done; 
+#for blastout in ./blast2_results/*blastout2
+## parsepull $blastout
+#done; 
+	parallel --jobs $maxCPU parsepull  ::: ./blast2_results/*blastout2 ::: $TAXDB ::: $REFDB
+wait
 fi
 
 #if multiple anchors
@@ -315,10 +328,11 @@ fi
 #only align kept fasta
 
 ##     Stage 4: align each OG
-if [ $MORET ]; then parallel --jobs $maxCPU 'mafft --auto {} > {.}.aln' ::: *fa
+if [ $MORET ]; then parallel --jobs $maxCPU 'mafft --auto {} > {.}.aln' ::: *fa; wait
 else
 mv *.fa ./OGfastasets/
 parallel --jobs $maxCPU 'mafft --auto {} > {.}.aln' ::: ./OGfastasets/*fa
+wait
 fi
 mv ./OGfastasets/*aln ./OGfastasALN/
 echo "Mafft alignment complete"
@@ -340,3 +354,4 @@ rm -rf ./ref_OGs
 rm -rf ./OGfastasets
 rm -rf ./hit1_fasta
 fi
+
