@@ -1,18 +1,17 @@
 #!/bin/bash
 set -e
 
-# TO DO: 
-#   file containing ref species names instead of arg1; 
-#   multiple anchor species.   add for loop to compare fastasets from multiple refs before alignment
-#   option to concatenate to matrix?
-#   convert ? to - in orignal OGs??
+# future dev: 
+#   accept file containing ref species names instead of arg1; 
+#   multiple anchor species.   
+#add cd-hit-est
 
 # Usage info
 show_help() {
 cat << EOF
-Example: ${0##*/} -T 8 -i OGs -r Nematostella -t taxa_blastdatabase -e 1e-20 -g ref_genome_blastdatabase
+Example: ${0##*/} -T 8 -s prot -i OGs -r Nematostella -t taxa_blastdatabase -e 1e-20 -g ref_genome_blastdatabase
 
-Usage: ${0##*/} [-h] [-D] [-c] [-m] [-T num] [-i OG_dir] [-r reference_species] [-t taxa_fastas_dir] [-g ref_genome_fasta_dir] [-e num]
+Usage: ${0##*/} [-h] [-D] [-c] [-m] [-T num] [-s seqtype] [-i OG_dir] [-r reference_species] [-t taxa_fastas_dir] [-g ref_genome_fasta_dir] [-e num]
 
 	-h <help>	display this help and exit
 	
@@ -22,6 +21,8 @@ Usage: ${0##*/} [-h] [-D] [-c] [-m] [-T num] [-i OG_dir] [-r reference_species] 
 	
 	-T MAXCPU	number of threads
 	
+	-s SEQTYPE  prot or nucl (protein or nucleotide input)
+
 	-i OGDIR	directory with either: 
 				one fasta per gene; each fasta has a sequence from Reference Species
 				-OR-
@@ -58,7 +59,7 @@ See fasta example: http://datadryad.org/bitstream/handle/10255/dryad.98320/OGs.z
 # Dependencies (must be in $PATH): 								
 #   NCBI BLAST 2.2.31+ (specifically: blastp, makeblastdb)		
 #   GNU parallel																								
-#   CD-HIT (cdhit), if -c invoked																									
+#   CD-HIT (cd-hit), if -c invoked																									
 # 																	
 # Dependencies (included): 		
 #   
@@ -83,10 +84,12 @@ CDHIT=""
 DEL=""
 MORET=""
 DELY=""
+SEQTYPE=""
 
 OPTIND=1
-Tflag=false; iflag=false; rflag=false; tflag=false; gflag=false; eflag=false
+Tflag=false; iflag=false; rflag=false; tflag=false; gflag=false; eflag=false; sflag=false;
 Terr="Missing: -T <number of threads>"
+serr="Missing: -s <prot or nucl>"
 ierr="Missing: -i <directory with query gene fastas>"
 rerr="Missing: -r <reference_species_name>"
 terr="Missing: -t <directory with taxon fastas>"
@@ -94,10 +97,11 @@ gerr="Missing: -g <directory with reference genome fasta(s)>"
 eerr="Missing: -e <e-value, e.g., 1e-20>"
 merr="Missing: -m <name of new taxa FASTA file>"
 
-while getopts hT:i:r:t:g:e:m:cD opt; do
+while getopts hT:i:s:r:t:g:e:m:cD opt; do
     case $opt in
         h)  show_help; exit 0;;
         T)  maxCPU=$OPTARG; if [ ! $OPTARG ]; then echo $Terr; echo "boo"; show_help; exit; fi;;
+	s)  SEQTYPE=$OPTARG; if [ ! $OPTARG ]; then echo $serr; show_help; exit; fi;; 
         i)  OGDIR=$OPTARG; if [ ! -d $OPTARG ]; then echo $ierr; show_help; exit; fi;;
         r)  REFSP=$OPTARG; if [ ! $OPTARG ]; then echo $rerr; show_help; exit; fi;;
         t)  TAXDB=$OPTARG; if [ ! -d $OPTARG ]; then echo $terr; show_help; exit; fi;;
@@ -120,9 +124,10 @@ elif ! $rflag && [[ -d $1 ]]; then echo $rerr; exit 1
 elif ! $tflag && [[ -d $1 ]]; then echo $terr; exit 1
 elif ! $gflag && [[ -d $1 ]]; then echo $gerr; exit 1
 elif ! $eflag && [[ -d $1 ]]; then echo $eerr; exit 1
+elif ! $sflag && [[ -d $1 ]]; then echo $serr; exit 1
 fi
 
-if [ $MORET ] && [ ! "$(ls ./${TAXADB}/${MORET}  2>/dev/null)" ]; then echo $merr; show_help; exit; fi;
+if [ $MORET ] && [ ! "$(ls ./${TAXADB}/${MORET}*  2>/dev/null)" ]; then echo $merr; show_help; exit; fi;
 merr2="Directory of previous alignments not found: ./OGfastasALN\ Try running without -m " 
 if [ $MORET ] && [ ! -d ./OGfastasALN  ]; then echo $merr2 ; exit; fi;
 
@@ -130,6 +135,7 @@ echo "" "Running...." ""
 echo "Reference species: $REFSP"
 echo "Orignal gene datasets in: $OGDIR"
 echo "New taxa datasets to search in: $TAXDB"
+echo "Sequence format is $SEQTYPE"
 echo "Reference species genome in: $REFDB"
 echo "Number of processors alloted: $maxCPU"
 
@@ -169,7 +175,7 @@ else
 	awk -v new=">${REFSP}\|" '{sub(/>/, new)}1' ${REFSP}_OGs_renamed.fa > tmp 2>/dev/null
 	mv tmp ./Seed_OGs/${REFSP}_OGs_renamed.fa
 	rm ${REFSP}_OGs_renamed.fa
-        perl -pi -e 's/-//g' ./Seed_OGs/${REFSP}_OGs_renamed.fa #remove any gaps if using OGs from alignments
+    perl -pi -e 's/-//g' ./Seed_OGs/${REFSP}_OGs_renamed.fa #remove any gaps if using OGs from alignments
 fi
 
 #BLAST REFSP OGs against whole REFSP genome to get consistent gene names
@@ -179,14 +185,23 @@ else
 	for fasta in ./${REFDB}/${REFSP}*.fa
 	
 	do
-	echo $fasta
-	  if [ ! -s ${fasta}.phr ]; then
+	if [[ $SEQTYPE == "prot" ]]; then
+	  if [ ! -s ${fasta}.phr ] ; then
 		  echo "Formating for BLAST  $fasta ..." #Format ref_genome peptide datasets for BLAST
 		  makeblastdb -in $fasta -parse_seqids -dbtype prot  #TO checkif exists first
 	  fi
 	  echo "BLASTING  ./Seed_OGs/${REFSP}_OGs_renamed.fa against own genome:  $fasta ..."
 	  blastp -query ./Seed_OGs/${REFSP}_OGs_renamed.fa -db $fasta -out ${fasta%.}_ref_blastout -evalue $EVAL -outfmt 6 -max_target_seqs 10
+    else
+    if [ ! -s ${fasta}.nhr ]; then
+		  echo "Formating for BLAST  $fasta ..." #Format ref_genome CDS datasets for BLAST
+		  makeblastdb -in $fasta -parse_seqids -dbtype nucl
+	  fi
+	  echo "BLASTING  ./Seed_OGs/${REFSP}_OGs_renamed.fa against own genome:  $fasta ..."
+	  blastn -query ./Seed_OGs/${REFSP}_OGs_renamed.fa -db $fasta -out ${fasta%.}_ref_blastout -evalue $EVAL -outfmt 6 # -max_target_seqs 1
 
+    fi
+    
 	#Remove redundant accessions and retain top match
 	  cat ${fasta%.}_ref_blastout |sort -k1,1 -k12,12nr > sorted
 	cat sorted| cut -f1 |uniq|  while read line ; do grep -m 1 $line sorted >> ${fasta%.}_ref_blastout_2; done 
@@ -214,36 +229,42 @@ else
 	NEWTX=./${TAXDB}/${MORET%.fa}_cdht98.fa
 	else
 	rename 's/\.fa/\.fas/' ./${TAXDB}/*.fa # change orig ext. to fas so it's ignored by later calls
-	parallel --jobs $maxCPU 'cdhit -i {} -o {.}_cdht98.fa -c 0.98 -n 5' ::: ./${TAXDB}/*.fas	
+	parallel --jobs $maxCPU 'cd-hit -i {} -o {.}_cdht98.fa -c 0.98 -n 5' ::: ./${TAXDB}/*.fas	
 	wait
 	fi
 fi
 if [ ! $CDHIT ] && [ $MORET ]; then NEWTX=./${TAXDB}/${MORET}; fi
 
 #Format peptide datasets for BLAST
-if [ $MORET ]; then makeblastdb -in NEWTX -parse_seqids -dbtype prot; fi
+
+if [ $MORET ]; then makeblastdb -in NEWTX -parse_seqids -dbtype $SEQTYPE; fi
 
 if [ "$(ls -A ./${TAXDB}/*phr  2>/dev/null)" ]; 
 then echo "BLAST databases for new taxa found"
 else
 	echo "Formatting BLAST databases for new taxa..."
-	parallel --jobs $maxCPU 'makeblastdb -in {} -parse_seqids -dbtype prot' ::: ./${TAXDB}/*.fa
+	parallel --jobs $maxCPU 'makeblastdb -in {} -parse_seqids -dbtype ' $SEQTYPE ::: ./${TAXDB}/*.fa
 	wait
 fi
 
 #BLAST $REFSP OGs against each formated peptide dataset
-if [ $MORET ]; then blastp -db NEWTX -query ./hit1_fasta/"${REFSP}".fa -out ${NEWTX}_blastout1 -evalue $EVAL -outfmt 6 -max_target_seqs 10
-	mv ./${TAXDB}/*_blastout1 ./blast1_results; 
-fi
+if [ $MORET ] && [[ $SEQTYPE == "prot" ]]; then blastp -db NEWTX -query ./hit1_fasta/"${REFSP}".fa -out ${NEWTX}_blastout1 -evalue $EVAL -outfmt 6 -max_target_seqs 10;fi
+if [ $MORET ] && [[ $SEQTYPE == "nucl" ]]; then blastn -db NEWTX -query ./hit1_fasta/"${REFSP}".fa -out ${NEWTX}_blastout1 -evalue $EVAL -outfmt 6 ;fi
+
 
 if [ "$(ls -A ./blast1_results)" ]; 
-then echo "BLAST1 complete"
+	then echo "BLAST1 complete"
 else
 	echo "BLAST1: Querying $REFSP against new taxa..."
+	if [[ $SEQTYPE == "prot" ]]; then
 	parallel --jobs $maxCPU 'blastp -db {} -query' ./hit1_fasta/"${REFSP}".fa '-out {.}_blastout1 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 10' ::: ./${TAXDB}/*.fa
+	fi
+	if [[ $SEQTYPE == "nucl" ]]; then 
+	parallel --jobs $maxCPU 'blastn -db {} -query' ./hit1_fasta/"${REFSP}".fa '-out {.}_blastout1 -evalue '"$EVAL"' -outfmt 6 ' ::: ./${TAXDB}/*.fa
 	wait
-	mv ./${TAXDB}/*_blastout1 ./blast1_results
+	fi
 fi
+mv ./${TAXDB}/*_blastout1 ./blast1_results
 
 
 #Pull fasta seqs for each hit to use in 2nd round of blasts
@@ -281,11 +302,21 @@ echo "Blast1 hits pulled"
 #BLAST REFSP OGs against best hits from each formated peptide dataset's 
 echo "Running reciprocal BLASTs..."; echo ""
 refgen=$(echo ./"${REFDB}"/${REFSP}*.fa)
-if [ $MORET ]; then blastp -query ./hit1_fasta/${NEWTX}.fa -evalue $EVAL -db $refgen -out {1.}_blastout2 -outfmt 6 -max_target_seqs 10; 
-else 
-parallel --jobs $maxCPU 'blastp -query {1} -db {2} -out {1.}_blastout2 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 10' ::: ./hit1_fasta/*.fa ::: $refgen
-wait
+if [[ $SEQTYPE == "prot" ]]; then
+	if [ $MORET ] ;  then blastp -query ./hit1_fasta/${NEWTX}.fa -evalue $EVAL -db $refgen -out {1.}_blastout2 -outfmt 6 -max_target_seqs 10; 
+	else 
+	parallel --jobs $maxCPU 'blastp -query {1} -db {2} -out {1.}_blastout2 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 10' ::: ./hit1_fasta/*.fa ::: $refgen
+	wait
+	fi
+else
+
+	if [ $MORET ]; then blastn -query ./hit1_fasta/${NEWTX}.fa -evalue $EVAL -db $refgen -out {1.}_blastout2 -outfmt 6 # -max_target_seqs 1; 
+	else 
+	parallel --jobs $maxCPU 'blastn -query {1} -db {2} -out {1.}_blastout2 -evalue '"$EVAL"' -outfmt 6' ::: ./hit1_fasta/*.fa ::: $refgen
+	wait
+	fi
 fi
+
 mv ./hit1_fasta/*_blastout2 ./blast2_results
 
 function parsepull {
@@ -354,4 +385,3 @@ rm -rf ./ref_OGs
 rm -rf ./OGfastasets
 rm -rf ./hit1_fasta
 fi
-
