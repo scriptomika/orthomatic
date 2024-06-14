@@ -73,7 +73,7 @@ These two scripts must be in the $PATH
 >
 > $ head -1 *fasta
 >
-> \_\_>AQUE_Gene.1::g.1::m.1  ORF type:5prime_partial len:194 (+),score=50.48 Cliona_varians_00001:3-584(+)
+> \>AQUE_Gene.1::g.1::m.1  ORF type:5prime_partial len:194 (+),score=50.48 Cliona_varians_00001:3-584(+)
 >
 > 
 > $ for fa in *.fasta ; do f=${fa%%.*}; f1=$(basename $f); echo $f1;
@@ -88,7 +88,7 @@ These two scripts must be in the $PATH
 >
 > $ head -1 *fa
 
-> \_>|_Amphimedon_queenslandica_000001
+> \>Amphimedon_queenslandica_000001
 
 
 ----
