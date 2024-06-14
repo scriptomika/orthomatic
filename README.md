@@ -2,9 +2,9 @@
 
 *Ortholog recovery using curated ortholog datasets and reciprocal best-match criterion.*
 
-This pipeline uses a set of protein queries in a representative taxon (extracted from 
-a user-provided set of orthologous peptides) to BLAST-search user-provided protein fasta files
-(e.g., assembled & translated transcriptomes). 
+This pipeline uses a set of protein (or nucleotide) queries in a representative taxon (extracted from 
+a user-provided set of orthologous peptides) to BLAST-search user-provided protein (or nucleotide) fasta files
+(e.g., assembled & translated transcriptomes, metagenome assemblies, etc). 
 
 Matches are then reciprocally BLASTed to the representative taxon's genome. Sequences 
 satisfying the criterion of mutual-best-match are then pooled  and aligned by MAFFT.
@@ -18,36 +18,41 @@ Once the local scripts are executable (chmod commands below), the orthomatic scr
 
  - NCBI BLAST 2.2.31+ (specifically: blastp, makeblastdb)		
  - GNU parallel																								
- - CD-HIT (cdhit), if -c invoked	
+ - CD-HIT (cd-hit), if -c invoked	
  - MAFFT (mafft)	
  - selectSeqs.pl 	(provided here, written by Naoki Takebayashi)
- - seqConverter.pl (for nexus input option, provided here, by Olaf Bininda-Emonds)
+ - seqConverter.pl (in order to use nexus input option, provided here, by Olaf Bininda-Emonds)
 
 [Source for selectSeqs.pl](http://raven.wrrb.uaf.edu/~ntakebay/teaching/programming/perl-scripts/perl-scripts.html)
 
 [Source fro seqConverter.pl](https://uol.de/systematik-evolutionsbiologie/programme)																
 ### Accessory scripts (included): 		
-These two scripts must be in the working directory   
+These two scripts must be in the $PATH  
 								
 - pullOGsfromBlast.py											
 - parse_recipBLAST.py		
 
 ### Prepare scripts 
 
-> chmod +x orthomatic.sh
->
 > chmod +x parse_recipBLAST.py
->
 > chmod +x pullOGsfromBlast.py
+> chmod +x orthomatic.sh
+> mv parse_recipBLAST.py pullOGsfromBlast.py orthomatic.sh ~/path/to/scripts/ #specify directory
+> export PATH=$PATH:~/path/to/scripts
+> 
+
 
 ----
 
 ## Inputs
-- directory containing a set of orthologous peptides, in either separate fasta files or in NEXUS format
+- directory containing a set of orthologous peptides or nueleotides, in either separate fasta files or in NEXUS format
 	- see example in OGs.zip at https://datadryad.org/stash/dataset/doi:10.5061/dryad.k6tq2
-- reference taxon with directory containing fasta file of genome protein models 
-	- the reference taxon must be represented in the ortholog dataset
-- directory containing protein fastas in which to search orthologs
+- reference taxon
+  	- example: 'Amphimedon' 
+- reference directory containing fasta file of complete protein/nucleotide models (ideally a genome) from reference taxon
+	- the reference taxon string must be found in the sequence headers
+ 	- example: >Amphimedon_seq1_c0_gi_1	 
+- directory containing fastas to be searched 
 - file extensions: fasta files should end in ".fa" and nexus in ".nex"
 - fasta headers: alphanumeric and _ characters only (no spaces)
 	- See fasta example: http://datadryad.org/bitstream/handle/10255/dryad.98320/OGs.zip?sequence=1
@@ -58,7 +63,7 @@ These two scripts must be in the working directory
 
 Example: 
 
-> orthomatic.sh -T 8 -i OGs -r Nematostella -t taxa_blastdatabase -e 1e-20 -g ref_genome_blastdatabase
+> orthomatic.sh -T 8 -i ortholog_dir -s prot -r Amphimedon -g Aque_genome -t newdata_fastas -e 1e-20 
 
 
 ### Parameters
@@ -70,6 +75,8 @@ Example:
 >	-c  	option to run CDHIT on FASTAs specified by -t or -m
 >	
 >	-T  	number of threads
+>	
+>	-s      sequence format (prot or nucl)
 >	
 >	-i  	directory with either: 
 >			one fasta per gene; each fasta has a sequence from Reference Species
