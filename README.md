@@ -62,16 +62,20 @@ $ export PATH=$PATH:~/path/to/scripts
 #adds sample name and leading zeros to contig fastas
 $ cd fasta_dir/ 
 $ ls
-Amphimedon_queenslandica.fasta
+Agelas_conifera.TRINITY.fasta
 $ head -1 *fasta
->AQUE_Gene.1::g.1::m.1  ORF type:5prime_partial len:194 (+),score=50.48 Cliona_varians_00001:3-584(+)
+>Agcon_Gene.1::g.1::m.1  ORF type:5prime_partial len:194 (+),score=50.48 Cliona_varians_00001:3-584(+)
+
 $ for fa in *.fasta ; do f=${fa%%.*}; f1=$(basename $f); echo $f1;
-$	awk '/^>/{printf ">" "%06d\n", ++i; next}{print}' < $fa > ${fa}2; #replaces headers with numbers 0-999999
-$	awk -v new=">${f1}_" '{sub(/>/, new)}1'  ${fa}2 > tmp 2>/dev/null; #appends file handle to numbered headers
-$	mv tmp ../${f1}.fa;
+$	awk '/^>/{printf ">" "%06d\n", ++i; next}{print}' < $fa |\ #replaces headers with numbers 0-999999
+$	awk -v new=">${f1}_" '{sub(/>/, new)}1'   > ${f1}.fa 2>/dev/null; #appends file handle to numbered headers
 $ done
-$ head -1 *fa
->Amphimedon_queenslandica_000001
+
+$ ls
+Agelas_conifera.TRINITY.fasta	Agelas_conifera.fa
+
+$ head -1 *.fa
+>Agelas_conifera_000001
 ```
 
 ----
