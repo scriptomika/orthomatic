@@ -9,7 +9,7 @@ set -e
 # Usage info
 show_help() {
 cat << EOF
-Example: ${0##*/} -T 8 -s prot -i OGs -r Nematostella -t taxa_blastdatabase -e 1e-20 -g ref_genome_blastdatabase
+Example: ${0##*/} -T 8 -i ortholog_dir -s prot -r Amphimedon -g Aque_genome -t newdata_fastas -e 1e-20 
 
 Usage: ${0##*/} [-h] [-D] [-c] [-m] [-T num] [-s seqtype] [-i OG_dir] [-r reference_species] [-t taxa_fastas_dir] [-g ref_genome_fasta_dir] [-e num]
 
