@@ -60,6 +60,7 @@ $ export PATH=$PATH:~/path/to/scripts
 
 ### Example: Renaming fasta headers based on filename
 Example: rename headers on Transdecoder output
+
 N.B. example file extension is 'transdecoder.fasta'.
 ```
 #adds sample name and leading zeros to contig fastas
