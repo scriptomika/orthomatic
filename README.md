@@ -90,7 +90,6 @@ Example:
 ### Parameters
 ```
 	-h 		help	
-	-D 		option to delete temporary files 	
 	-c  	option to run CDHIT on FASTAs specified by -t or -m	
 	-T  	number of threads	
 	-s      sequence format (prot or nucl)	
@@ -100,14 +99,40 @@ Example:
 			single nexus file with concatenated data; gene partitions specified in charset block				
 	-r 		Reference Species handle; no spaces, name must match fasta headerline in OGDIR/ files	
 	-t 		directory with peptide fasta files for each taxon to search, including any reference species
-	-m     add new taxon dataset to existing results (put FASTA in TAXDB directory)
-              **Requires directory of previous alignments called OGfastasALN**               
+	-m     option to add new taxon dataset to existing results (put FASTA in TAXDB directory)
+              **Requires directory of previous alignments called orthomatic_alignments**               
 	-g 		directory with peptide fasta genome for reference species. File must start with REFSP handle. 
 	-e 		e-value cut-off for blast
+	-k 		option to keep temporary files 	(for troubleshooting, discard is default)
+
 ```
 ---
 
+# Example: Setting up Reference species
+## Example reference species (*Amphimedon queenslandica*)
+
+This species should have sequences represented in the curated gene sets supplied to Orthomatic AND a fasta file (preferably a genome) in the fasta directory.
+
+REFSP handle will be "Amphimedon", as that string is found in 1) the  gene set seq header, in 2) the species' fasta file name and in 3) its fasta sequence headers
+
+```
+$ grep "Amphimedon" gene_sets/gene1.fa
+>Amphimedon_gene_xyz
+
+# (the Reference species string can occur anywhere in the sequence ID: >genexyz_Amphimedon_acoi3776j3 would also work)
+
+# fasta directory includes only 1 file begininning with "Amphimedon"
+$ ls taxa_fastas/
+Amphimedon_queenslandica.genome.fa
+Amph_compressa.fa #other Amphimedons are labelled to avoid a match
+Amph_viridis.fa
+
+$ head -1 taxa_fastas/Amphimedon_queenslandica.genome.fa
+>Amphimedon_queenslandica_00001 
+
+$ orthomatic.sh -T 24 -r Amphimedon -t taxa_fastas -i gene_sets -e 1e-50
+```
 ## Output
 
-Fasta files for the recovered orthologs will be found the directories **OGfastasets** (unaligned) and **OGfastasALN** (MAFFT-aligned)
+MAFFT-Aligned fasta files for the recovered orthologs will be found the directory **orthomatic_alignments**.
 
