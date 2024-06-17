@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+#version4: 
+#omitting REFDB
+
 # future dev: 
 #   accept file containing ref species names instead of arg1; 
 #   multiple anchor species.   
@@ -9,13 +12,11 @@ set -e
 # Usage info
 show_help() {
 cat << EOF
-Example: ${0##*/} -T 8 -i ortholog_dir -s prot -r Amphimedon -g Aque_genome -t newdata_fastas -e 1e-20 
+Example: ${0##*/} -T 8 -i ortholog_dir/ -s prot -r Amphimedon -t newdata_fasta_dir/ -e 1e-20 
 
-Usage: ${0##*/} [-h] [-D] [-c] [-m] [-T num] [-s seqtype] [-i OG_dir] [-r reference_species] [-t taxa_fastas_dir] [-g ref_genome_fasta_dir] [-e num]
+Usage: ${0##*/} [-h] [-c] [-m] [-T num] [-s seqtype] [-i OG_dir] [-r reference_species] [-t taxa_fastas_dir] [-e num] [-k]
 
 	-h <help>	display this help and exit
-	
-	-D DEL		option to delete temporary files 
 	
 	-c CDHIT	option to run CDHIT on FASTAs specified by -t or -m
 	
@@ -24,20 +25,27 @@ Usage: ${0##*/} [-h] [-D] [-c] [-m] [-T num] [-s seqtype] [-i OG_dir] [-r refere
 	-s SEQTYPE  prot or nucl (protein or nucleotide input)
 
 	-i OGDIR	directory with either: 
-				one fasta per gene; each fasta has a sequence from Reference Species
+				one fasta per gene (.fa)
 				-OR-
-				single nexus file with concatenated data; gene partitions specified in charset block
+				single nexus file with concatenated data; gene partitions specified in charset block (.nex)
 				
-	-r REFSP	Reference Species handle; no spaces, name must match fasta headerline in OGDIR/ files
+				Reference Species must be included, with REFSP used in sequence id.
+				
+	-r REFSP	Reference Species handle; no spaces, name must be found in sequence ids of OGDIR/ files
+				species should have good genomic data that will be used in reciprocal BLASTs with all other taxa
 	
-	-t TAXDB	directory with peptide fasta files for each taxon to search, including any reference species
-				here they have been cdhit
+	-t TAXDB	directory with peptide fasta files for each taxon to search
+				reference species file must include REFSP in file name
+				NO OTHER FILES should include REFSP in file name
+				all fasta must end with .fa
+				
 				
 	-m MORET    add new taxon dataset to existing results (put FASTA in TAXDB directory)
-                **Requires directory of previous alignments called OGfastasALN**
+                **Requires directory of previous alignments called orthomatic_alignments**
                  
-	-g REFDB	directory with peptide fasta genome for reference species. File must start with REFSP handle. 
 	-e EVAL		e-value cut-off for blast
+	
+	-k KEEP		option to keep intermediate files (for troubleshooting, discarded by default) 
 
 No spaces in any FASTA headers. 
 Fasta file extension uses ".fa"
@@ -59,7 +67,7 @@ See fasta example: http://datadryad.org/bitstream/handle/10255/dryad.98320/OGs.z
 # Dependencies (must be in $PATH): 								
 #   NCBI BLAST 2.2.31+ (specifically: blastp, makeblastdb)		
 #   GNU parallel																								
-#   CD-HIT (cd-hit), if -c invoked																									
+#   CD-HIT (cd-hit), if -c invoked																								
 # 																	
 # Dependencies (included): 		
 #   
@@ -77,39 +85,35 @@ EOF
 OGDIR=""
 REFSP=""
 TAXDB=""
-REFDB=""
 maxCPU=""
 EVAL=""
 CDHIT=""
-DEL=""
 MORET=""
-DELY=""
+KEEP="yes"
 SEQTYPE=""
 
 OPTIND=1
-Tflag=false; iflag=false; rflag=false; tflag=false; gflag=false; eflag=false; sflag=false;
+Tflag=false; iflag=false; rflag=false; tflag=false;eflag=false; sflag=false;
 Terr="Missing: -T <number of threads>"
 serr="Missing: -s <prot or nucl>"
 ierr="Missing: -i <directory with query gene fastas>"
 rerr="Missing: -r <reference_species_name>"
 terr="Missing: -t <directory with taxon fastas>"
-gerr="Missing: -g <directory with reference genome fasta(s)>"
 eerr="Missing: -e <e-value, e.g., 1e-20>"
 merr="Missing: -m <name of new taxa FASTA file>"
 
-while getopts hT:i:s:r:t:g:e:m:cD opt; do
+while getopts hT:i:s:r:t:e:m:cD opt; do
     case $opt in
         h)  show_help; exit 0;;
         T)  maxCPU=$OPTARG; if [ ! $OPTARG ]; then echo $Terr; echo "boo"; show_help; exit; fi;;
-	s)  SEQTYPE=$OPTARG; if [ ! $OPTARG ]; then echo $serr; show_help; exit; fi;; 
+	    s)  SEQTYPE=$OPTARG; if [ ! $OPTARG ]; then echo $serr; show_help; exit; fi;; 
         i)  OGDIR=$OPTARG; if [ ! -d $OPTARG ]; then echo $ierr; show_help; exit; fi;;
         r)  REFSP=$OPTARG; if [ ! $OPTARG ]; then echo $rerr; show_help; exit; fi;;
         t)  TAXDB=$OPTARG; if [ ! -d $OPTARG ]; then echo $terr; show_help; exit; fi;;
-        g)  REFDB=$OPTARG; if [ ! -d $OPTARG ]; then echo $gerr; show_help; exit; fi;;
         e)  EVAL=$OPTARG;  if [ ! $OPTARG ]; then echo $eerr; show_help; exit; fi;;
         m)  MORET=$OPTARG ;;
         c)  CDHIT=$OPTARG; echo "Input taxa fastas will be consolidated with CD-HIT" ;;
-        D)  DEL=$OPTARG; echo "Clean-up selected: Temporary files will be deleted"; DELY="yes" ;;
+        k)  KEEP=$OPTARG; echo "Clean-up supressed: Temporary files will be retained"; KEEP="" ;;
         \?) echo "Unknown option: -$OPTARG" >&2; show_help; exit 1;;
         :) echo "Missing option argument for -$OPTARG" >&2; show_help; exit 1;;
         *) echo "Unimplemented option: -$OPTARG" >&2;show_help; exit 1;;
@@ -117,26 +121,24 @@ while getopts hT:i:s:r:t:g:e:m:cD opt; do
 done
 shift "$((OPTIND-1))" # Shift off the options and optional --.
 
-if [[ -z $OGDIR || -z $TAXDB || -z $REFSP || -z $EVAL || -z $maxCPU || -z $REFDB ]]; then show_help; exit 1
+if [[ -z $OGDIR || -z $TAXDB || -z $REFSP || -z $EVAL || -z $maxCPU ]]; then show_help; exit 1
 elif ! $Tflag && [[ -d $1 ]]; then echo $Terr; exit 1
 elif ! $iflag && [[ -d $1 ]]; then echo $ierr; exit 1
 elif ! $rflag && [[ -d $1 ]]; then echo $rerr; exit 1
 elif ! $tflag && [[ -d $1 ]]; then echo $terr; exit 1
-elif ! $gflag && [[ -d $1 ]]; then echo $gerr; exit 1
 elif ! $eflag && [[ -d $1 ]]; then echo $eerr; exit 1
 elif ! $sflag && [[ -d $1 ]]; then echo $serr; exit 1
 fi
 
 if [ $MORET ] && [ ! "$(ls ./${TAXADB}/${MORET}*  2>/dev/null)" ]; then echo $merr; show_help; exit; fi;
-merr2="Directory of previous alignments not found: ./OGfastasALN\ Try running without -m " 
-if [ $MORET ] && [ ! -d ./OGfastasALN  ]; then echo $merr2 ; exit; fi;
+merr2="Directory of previous alignments not found: ./orthomatic_alignments\ Try running without -m " 
+if [ $MORET ] && [ ! -d ./orthomatic_alignments  ]; then echo $merr2 ; exit; fi;
 
 echo "" "Running...." ""
 echo "Reference species: $REFSP"
 echo "Orignal gene datasets in: $OGDIR"
 echo "New taxa datasets to search in: $TAXDB"
 echo "Sequence format is $SEQTYPE"
-echo "Reference species genome in: $REFDB"
 echo "Number of processors alloted: $maxCPU"
 
 
@@ -146,7 +148,7 @@ mkdir ./blast2_results
 mkdir ./hit1_fasta
 mkdir ./ref_OGs
 mkdir ./OGfastasets
-if [ ! $MORET ]; then mkdir ./OGfastasALN 2>/dev/null ; fi
+if [ ! $MORET ]; then mkdir ./orthomatic_alignments 2>/dev/null ; fi
 
 ###     Stage 1 : Pull OrthoGroup sequences for the Reference species 
 ###     and use them to blast the reference genome
@@ -182,7 +184,7 @@ fi
 if [ "$(ls -A ./ref_OGs/*ref_blastout 2>/dev/null)" ]  #(if not empty:)
 then echo "$REFSP OGs BLAST against own genome: complete"
 else
-	for fasta in ./${REFDB}/${REFSP}*.fa
+	for fasta in ./${TAXDB}/${REFSP}*.fa
 	
 	do
 	if [[ $SEQTYPE == "prot" ]]; then
@@ -212,7 +214,7 @@ else
          cut -f2 ${fasta%.}_ref_blastout_2 > file
  	  selectSeqs.pl -f file $fasta > ref_pep_genome_seq.fa
  	  rm file 
-	  mv ./${REFDB}/*ref_blastout* ./ref_OGs
+	  mv ./${TAXDB}/*ref_blastout* ./ref_OGs
 	  mv  ref_pep_genome_seq.fa ./hit1_fasta/${REFSP}.fa
 	done
 fi
@@ -239,13 +241,9 @@ if [ ! $CDHIT ] && [ $MORET ]; then NEWTX=./${TAXDB}/${MORET}; fi
 
 if [ $MORET ]; then makeblastdb -in NEWTX -parse_seqids -dbtype $SEQTYPE; fi
 
-if [ "$(ls -A ./${TAXDB}/*phr  2>/dev/null)" ]; 
-then echo "BLAST databases for new taxa found"
-else
 	echo "Formatting BLAST databases for new taxa..."
 	parallel --jobs $maxCPU 'makeblastdb -in {} -parse_seqids -dbtype ' $SEQTYPE ::: ./${TAXDB}/*.fa
 	wait
-fi
 
 #BLAST $REFSP OGs against each formated peptide dataset
 if [ $MORET ] && [[ $SEQTYPE == "prot" ]]; then blastp -db NEWTX -query ./hit1_fasta/"${REFSP}".fa -out ${NEWTX}_blastout1 -evalue $EVAL -outfmt 6 -max_target_seqs 10;fi
@@ -301,7 +299,7 @@ echo "Blast1 hits pulled"
 
 #BLAST REFSP OGs against best hits from each formated peptide dataset's 
 echo "Running reciprocal BLASTs..."; echo ""
-refgen=$(echo ./"${REFDB}"/${REFSP}*.fa)
+refgen=$(echo ./"${TAXDB}"/${REFSP}*.fa)
 if [[ $SEQTYPE == "prot" ]]; then
 	if [ $MORET ] ;  then blastp -query ./hit1_fasta/${NEWTX}.fa -evalue $EVAL -db $refgen -out {1.}_blastout2 -outfmt 6 -max_target_seqs 10; 
 	else 
@@ -335,19 +333,19 @@ local basepath=${1%_blastout2}
      parse_recipBLAST.py ${1}_2 ./blast1_results/${base}_blastout1_2 1 2 12 high ${1}.rbh
      tail -n+2 ${1}.rbh > ${1}.rbh2
      pullOGsfromBlast.py $seqfile ${1}.rbh2 2 1; rm ${1}.rbh*
-   elif [ -s ./${3}/${base}.fa ]; then seqfile=./${3}/${base}.fa
-     pullOGsfromBlast.py $seqfile ./ref_OGs/${base}.fa_ref_blastout_2 2 2
+ #  elif [ -s ./${3}/${base}.fa ]; then seqfile=./${3}/${base}.fa
+ #    pullOGsfromBlast.py $seqfile ./ref_OGs/${base}.fa_ref_blastout_2 2 2
    fi
   echo "Pulling Best Reciprocal Blast Hits from " $seqfile
 }
 export -f parsepull
 
-if [ $MORET ]; then parsepull ./blast2_results/${NEWTX%.fa}_blastout2 $TAXDB $REFDB
+if [ $MORET ]; then parsepull ./blast2_results/${NEWTX%.fa}_blastout2 $TAXDB #$REFDB
 else
 #for blastout in ./blast2_results/*blastout2
 ## parsepull $blastout
 #done; 
-	parallel --jobs $maxCPU parsepull  ::: ./blast2_results/*blastout2 ::: $TAXDB ::: $REFDB
+	parallel --jobs $maxCPU parsepull  ::: ./blast2_results/*blastout2 ::: $TAXDB #::: $REFDB
 wait
 fi
 
@@ -365,7 +363,7 @@ mv *.fa ./OGfastasets/
 parallel --jobs $maxCPU 'mafft --auto {} > {.}.aln' ::: ./OGfastasets/*fa
 wait
 fi
-mv ./OGfastasets/*aln ./OGfastasALN/
+mv ./OGfastasets/*aln ./orthomatic_alignments/
 echo "Mafft alignment complete"
 
 ##restore original taxa fastanames [only applies if CD-HIT flagged]
@@ -374,9 +372,8 @@ if [ $CDHIT ]; then
 fi
 
 ## Tidy up [optional]
-if [ $DELY ]; then 
+if [ $KEEP ]; then 
 rm ./${TAXDB}/*.{phr,pin,pog,psd,psi,psq}
-rm ./${REFDB}/*.{phr,pin,pog,psd,psi,psq}
 rm -rf ./Seed_OGs
 rm -rf ./blast1_results
 rm -rf ./blast2_results
