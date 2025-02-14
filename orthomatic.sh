@@ -66,8 +66,8 @@ See fasta example: http://datadryad.org/bitstream/handle/10255/dryad.98320/OGs.z
 # 
 # Dependencies (must be in $PATH): 								
 #   NCBI BLAST 2.2.31+ (specifically: blastp, makeblastdb)		
-#   GNU parallel																								
-#   CD-HIT (cd-hit), if -c invoked																								
+#   GNU parallel																
+#   CD-HIT (cd-hit), if -c invoked														
 # 																	
 # Dependencies (included): 		
 #   
@@ -142,20 +142,14 @@ echo "Sequence format is $SEQTYPE"
 echo "Number of processors alloted: $maxCPU"
 
 
-mkdir ./Seed_OGs
-mkdir ./blast1_results
-mkdir ./blast2_results
-mkdir ./hit1_fasta
-mkdir ./ref_OGs
-mkdir ./OGfastasets
-if [ ! $MORET ]; then mkdir ./orthomatic_alignments 2>/dev/null ; fi
+#if [ ! $MORET ]; then mkdir ./orthomatic_alignments 2>/dev/null ; fi
 
 ###     Stage 1 : Pull OrthoGroup sequences for the Reference species 
 ###     and use them to blast the reference genome
 
 #Grab REFSP seqs from each the Orthology Group, renumbers, tags species and write to file: REFSP_OGs_renamed.fa
 if [ -s ./Seed_OGs/${REFSP}_OGs_renamed.fa ] #if file exists and is > 0 bytes
-	then echo "OGs from $REFSP ready"
+	then echo "OGs from $REFSP ready"; echo ""
 else
 		if [ "$(ls -A $OGDIR/*.nex 2>/dev/null)" ]
 		then
@@ -172,7 +166,8 @@ else
 	#puts leading zeroes in numbering scheme
 	awk '/^>/{printf ">" "%05d\n", ++i; next}{print}' < ${REFSP}_OGs.fa > ${REFSP}_OGs_renamed.fa
 	rm *_OGs.fa
-	#perl -p -i -e 's/>/>Nematostella|/g' ${REFSP}_OGs_renamed.fa
+        mkdir ./Seed_OGs/
+        #perl -p -i -e 's/>/>Nematostella|/g' ${REFSP}_OGs_renamed.fa
 	#mv *renamed.fa ./Seed_OGs 
 	awk -v new=">${REFSP}\|" '{sub(/>/, new)}1' ${REFSP}_OGs_renamed.fa > tmp 2>/dev/null
 	mv tmp ./Seed_OGs/${REFSP}_OGs_renamed.fa
@@ -182,8 +177,10 @@ fi
 
 #BLAST REFSP OGs against whole REFSP genome to get consistent gene names
 if [ "$(ls -A ./ref_OGs/*ref_blastout 2>/dev/null)" ]  #(if not empty:)
-then echo "$REFSP OGs BLAST against own genome: complete"
+then echo "$REFSP OGs BLAST against own genome: complete" ; echo ""
 else
+mkdir ./ref_OGs
+mkdir ./hit1_fasta
 	for fasta in ./${TAXDB}/${REFSP}*.fa
 	
 	do
@@ -250,9 +247,11 @@ if [ $MORET ] && [[ $SEQTYPE == "prot" ]]; then blastp -db NEWTX -query ./hit1_f
 if [ $MORET ] && [[ $SEQTYPE == "nucl" ]]; then blastn -db NEWTX -query ./hit1_fasta/"${REFSP}".fa -out ${NEWTX}_blastout1 -evalue $EVAL -outfmt 6 ;fi
 
 
-if [ "$(ls -A ./blast1_results)" ]; 
+if [ "$(ls -A ./blast1_results  2>/dev/null))" ]; 
 	then echo "BLAST1 complete"
 else
+        mkdir ./blast1_results
+
 	echo "BLAST1: Querying $REFSP against new taxa..."
 	if [[ $SEQTYPE == "prot" ]]; then
 	parallel --jobs $maxCPU 'blastp -db {} -query' ./hit1_fasta/"${REFSP}".fa '-out {.}_blastout1 -evalue '"$EVAL"' -outfmt 6 -max_target_seqs 10' ::: ./${TAXDB}/*.fa
@@ -261,9 +260,9 @@ else
 	parallel --jobs $maxCPU 'blastn -db {} -query' ./hit1_fasta/"${REFSP}".fa '-out {.}_blastout1 -evalue '"$EVAL"' -outfmt 6 ' ::: ./${TAXDB}/*.fa
 	wait
 	fi
-fi
-mv ./${TAXDB}/*_blastout1 ./blast1_results
 
+mv ./${TAXDB}/*_blastout1 ./blast1_results
+fi
 
 #Pull fasta seqs for each hit to use in 2nd round of blasts
 function pullseqs () {
@@ -298,6 +297,9 @@ echo "Blast1 hits pulled"
 ###    -create fasta for each OrthoGroup containing seqs that satisfy BestReciprocalHit criterion
 
 #BLAST REFSP OGs against best hits from each formated peptide dataset's 
+if [ "$(ls -A ./blast2_results  2>/dev/null))" ]; 
+        then echo "BLAST2 complete"; echo ""
+else
 echo "Running reciprocal BLASTs..."; echo ""
 refgen=$(echo ./"${TAXDB}"/${REFSP}*.fa)
 if [[ $SEQTYPE == "prot" ]]; then
@@ -314,8 +316,9 @@ else
 	wait
 	fi
 fi
-
+mkdir ./blast2_results
 mv ./hit1_fasta/*_blastout2 ./blast2_results
+fi
 
 function parsepull {
 	#Remove redundant accessions
@@ -330,39 +333,38 @@ local basepath=${1%_blastout2}
    # ref_OG becomes file prefix
    # blast hit sequences are pulled and appended to the same ref_OG fasta
    if [ -s ./${2}/${base}.fa ]; then seqfile=./${2}/${base}.fa
-     parse_recipBLAST.py ${1}_2 ./blast1_results/${base}_blastout1_2 1 2 12 high ${1}.rbh
+     ./parse_recipBLAST.py ${1}_2 ./blast1_results/${base}_blastout1_2 1 2 12 high ${1}.rbh
      tail -n+2 ${1}.rbh > ${1}.rbh2
-     pullOGsfromBlast.py $seqfile ${1}.rbh2 2 1; rm ${1}.rbh*
+     ./pullOGsfromBlast.py $seqfile ${1}.rbh2 2 1; rm ${1}.rbh*
  #  elif [ -s ./${3}/${base}.fa ]; then seqfile=./${3}/${base}.fa
- #    pullOGsfromBlast.py $seqfile ./ref_OGs/${base}.fa_ref_blastout_2 2 2
+ #    ./pullOGsfromBlast.py $seqfile ./ref_OGs/${base}.fa_ref_blastout_2 2 2
    fi
   echo "Pulling Best Reciprocal Blast Hits from " $seqfile
 }
 export -f parsepull
 
-if [ $MORET ]; then parsepull ./blast2_results/${NEWTX%.fa}_blastout2 $TAXDB #$REFDB
+##     Stage 4: establish which blast hits are repriprocated, pull seqs to indiv OG fasta, align each OG
+if [ "$(ls -A ./OGfastasets  2>/dev/null))" ]; 
+        then echo "Reciprocated hits grouped and aligned by OG"; echo ""
 else
-#for blastout in ./blast2_results/*blastout2
-## parsepull $blastout
-#done; 
+	echo "Checking reciprocrocity of best hits..."; echo ""
+	if [ $MORET ]; then 
+		parsepull ./blast2_results/${NEWTX%.fa}_blastout2 $TAXDB #$REFDB
+
+	else
+	#for blastout in ./blast2_results/*blastout2
+	## parsepull $blastout
+	#done; 
 	parallel --jobs $maxCPU parsepull  ::: ./blast2_results/*blastout2 ::: $TAXDB #::: $REFDB
-wait
-fi
+	wait
+	fi
 
-#if multiple anchors
-#look in first anchor's fasta-set
-# grep deflines for all anchors
-# search next anchor's fasta-set for co-occuring deflines: if found keep fasta, if not discard.
-#
-#only align kept fasta
-
-##     Stage 4: align each OG
-if [ $MORET ]; then parallel --jobs $maxCPU 'mafft --auto {} > {.}.aln' ::: *fa; wait
-else
-mv *.fa ./OGfastasets/
-parallel --jobs $maxCPU 'mafft --auto {} > {.}.aln' ::: ./OGfastasets/*fa
-wait
+    echo "Running MAFFT on each OG"; echo ""
+    mv *.fa ./OGfastasets/
+    parallel --jobs $maxCPU 'mafft --auto {} > {.}.aln' ::: ./OGfastasets/*fa
+    wait
 fi
+mkdir orthomatic_alignments
 mv ./OGfastasets/*aln ./orthomatic_alignments/
 echo "Mafft alignment complete"
 
