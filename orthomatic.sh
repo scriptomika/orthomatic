@@ -142,7 +142,6 @@ echo "Sequence format is $SEQTYPE"
 echo "Number of processors alloted: $maxCPU"
 
 
-#if [ ! $MORET ]; then mkdir ./orthomatic_alignments 2>/dev/null ; fi
 
 ###     Stage 1 : Pull OrthoGroup sequences for the Reference species 
 ###     and use them to blast the reference genome
@@ -280,16 +279,21 @@ function pullseqs () {
 	rm ${1}.temp
 	}
 export -f pullseqs
-if [ $MORET ]; then pullseqs ./blast1_results/${NEWTX}_blastout1 $TAXDB; 
+
+if [ "$(ls -A ./hit1_fasta 2>/dev/null)" ] ; then
+     echo "Sequences ready for Blast1 hits in ./hit1_fasta"
+else
+	if [ $MORET ]; then pullseqs ./blast1_results/${NEWTX}_blastout1 $TAXDB; 
 	else
 	#for hitfile in ./blast1_results/*blastout1
 #	do
 	#pullseqs $hitfile
 #	done
 	parallel --jobs $maxCPU pullseqs  ::: ./blast1_results/*blastout1 ::: $TAXDB
-wait
+    wait
+   fi
 fi
-echo "Blast1 hits pulled"
+echo "Sequences pulled for Blast1 hits into ./hit1_fasta"
 
 
 ###    Stage 3:  Check reciprocity in Blast matches and make FASTAS:
@@ -344,10 +348,10 @@ local basepath=${1%_blastout2}
 export -f parsepull
 
 ##     Stage 4: establish which blast hits are repriprocated, pull seqs to indiv OG fasta, align each OG
-if [ "$(ls -A ./OGfastasets  2>/dev/null))" ]; 
+if [ -d OGfastasets ] && [ "$(ls -A ./OGfastasets  2>/dev/null))" ]; 
         then echo "Reciprocated hits grouped and aligned by OG"; echo ""
 else
-	echo "Checking reciprocrocity of best hits..."; echo ""
+	echo "Checking reciprocity of best hits and grabbing those sequences..."; echo ""
 	if [ $MORET ]; then 
 		parsepull ./blast2_results/${NEWTX%.fa}_blastout2 $TAXDB #$REFDB
 
@@ -360,6 +364,7 @@ else
 	fi
 
     echo "Running MAFFT on each OG"; echo ""
+    mkdir OGfastasets
     mv *.fa ./OGfastasets/
     parallel --jobs $maxCPU 'mafft --auto {} > {.}.aln' ::: ./OGfastasets/*fa
     wait
